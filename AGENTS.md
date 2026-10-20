@@ -1,0 +1,47 @@
+# AGENTS.md
+
+## Commands
+
+### Install dependencies
+```bash
+npm run install:all
+```
+
+### Run frontend (dev server, http://localhost:5173)
+```bash
+npm run dev:frontend
+```
+
+### Run backend (json-server REST API, http://localhost:3001)
+```bash
+npm run dev:backend
+```
+
+### Run tests
+```bash
+npm test
+```
+
+### Run linter
+```bash
+npm run lint
+```
+
+## Commit format
+
+All commits **must** follow [Conventional Commits](https://www.conventionalcommits.org/):
+
+```
+<type>(<scope>): <description>
+```
+
+**Types:** `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
+
+**Examples:**
+```
+feat(calendar): add slot booking form
+fix(api): handle empty bookings list
+docs: update installation instructions
+```
+
+This convention is required — release-please reads commit messages to auto-generate changelogs and bump versions when PRs are merged into `main`.
