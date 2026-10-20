@@ -1,10 +1,17 @@
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { vi, it, expect } from 'vitest'
 import App from './App'
+import * as api from './api'
 
-describe('App', () => {
-  it('renders without crashing', () => {
-    render(<App />)
-    expect(screen.getByText(/get started/i)).toBeTruthy()
-  })
+vi.mock('./api', () => ({
+  fetchSlots: vi.fn().mockResolvedValue([]),
+  fetchBookings: vi.fn().mockResolvedValue([]),
+  createBooking: vi.fn(),
+}))
+
+it('renders the booking page heading', () => {
+  vi.mocked(api.fetchSlots).mockResolvedValue([])
+  vi.mocked(api.fetchBookings).mockResolvedValue([])
+  render(<App />)
+  expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Запись на звонок')
 })
