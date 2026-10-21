@@ -12,7 +12,7 @@ npm run install:all
 npm run dev:frontend
 ```
 
-### Run backend (json-server REST API, http://localhost:3001)
+### Run backend (Hono API server, http://localhost:3001)
 ```bash
 npm run dev:backend
 ```
