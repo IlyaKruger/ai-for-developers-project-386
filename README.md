@@ -8,6 +8,10 @@
 Учебный проект Хекслета: https://ru.hexlet.io/programs/ai-for-developers
 Как это должно работать: https://files.hexlet.app/a/2ipc5m
 
+## Демо
+
+**Приложение:** https://ai-for-developers-project-386-6d42.onrender.com
+
 ## Стек
 
 - Разное
