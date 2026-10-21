@@ -1,5 +1,5 @@
 import { client } from './generated/client.gen'
 
-client.setConfig({ baseUrl: 'http://localhost:3001' })
+client.setConfig({ baseUrl: import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3001' })
 
 export { client }
