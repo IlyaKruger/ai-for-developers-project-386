@@ -1,68 +1,142 @@
 import { useEffect, useState } from 'react'
-import { Button } from '@/components/ui/button'
-import { fetchSlots, fetchBookings, createBooking } from './api'
-import { getAvailableSlots } from './lib/slots'
+import './client'
+import { eventTypesList, slotsList, bookingsCreate } from './generated/sdk.gen'
 import { formatSlotDate, formatSlotTime } from './lib/format'
-import type { Slot } from './types'
+import { Button } from '@/components/ui/button'
+import type { EventType, Slot } from './generated/types.gen'
 
 type State =
   | { phase: 'loading' }
-  | { phase: 'idle'; slots: Slot[] }
-  | { phase: 'selecting'; slots: Slot[]; slot: Slot }
-  | { phase: 'submitting'; slots: Slot[]; slot: Slot }
-  | { phase: 'success' }
+  | { phase: 'pick-type'; eventTypes: EventType[] }
+  | { phase: 'loading-slots'; eventTypes: EventType[]; eventType: EventType }
+  | { phase: 'pick-slot'; eventTypes: EventType[]; eventType: EventType; slots: Slot[] }
+  | { phase: 'booking'; eventTypes: EventType[]; eventType: EventType; slots: Slot[]; slot: Slot }
+  | { phase: 'submitting'; eventTypes: EventType[]; eventType: EventType; slots: Slot[]; slot: Slot }
+  | { phase: 'success'; eventType: EventType; slot: Slot }
   | { phase: 'error'; message: string }
 
 export default function App() {
   const [state, setState] = useState<State>({ phase: 'loading' })
 
   useEffect(() => {
-    Promise.all([fetchSlots(), fetchBookings()])
-      .then(([slots, bookings]) =>
-        setState({ phase: 'idle', slots: getAvailableSlots(slots, bookings) }),
-      )
-      .catch((err: unknown) =>
-        setState({ phase: 'error', message: String(err) }),
-      )
+    eventTypesList()
+      .then((r) => {
+        if (r.error) throw new Error('Не удалось загрузить типы встреч')
+        setState({ phase: 'pick-type', eventTypes: r.data ?? [] })
+      })
+      .catch((err: unknown) => setState({ phase: 'error', message: String(err) }))
   }, [])
 
-  if (state.phase === 'loading') {
-    return <Page><p className="text-muted-foreground">Загрузка…</p></Page>
+  function selectEventType(eventType: EventType) {
+    if (state.phase !== 'pick-type') return
+    setState({ phase: 'loading-slots', eventTypes: state.eventTypes, eventType })
+    slotsList({ query: { eventTypeId: eventType.id } })
+      .then((r) => {
+        if (r.error) throw new Error('Не удалось загрузить слоты')
+        setState({
+          phase: 'pick-slot',
+          eventTypes: state.eventTypes,
+          eventType,
+          slots: r.data ?? [],
+        })
+      })
+      .catch((err: unknown) => setState({ phase: 'error', message: String(err) }))
+  }
+
+  async function handleBooking(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    if (state.phase !== 'booking') return
+    const { eventType, slot, slots, eventTypes } = state
+    const fd = new FormData(e.currentTarget)
+    setState({ phase: 'submitting', eventType, slot, slots, eventTypes })
+    const r = await bookingsCreate({
+      body: {
+        slotId: slot.id,
+        bookerName: fd.get('name') as string,
+        bookerEmail: fd.get('email') as string,
+      },
+    })
+    if (r.error) {
+      setState({ phase: 'error', message: (r.error as { message?: string }).message ?? 'Ошибка бронирования' })
+      return
+    }
+    setState({ phase: 'success', eventType, slot })
+  }
+
+  if (state.phase === 'loading' || state.phase === 'loading-slots') {
+    return <Page title="Запись на звонок"><p className="text-muted-foreground">Загрузка…</p></Page>
   }
 
   if (state.phase === 'error') {
-    return <Page><p className="text-destructive">{state.message}</p></Page>
+    return <Page title="Запись на звонок"><p className="text-destructive">{state.message}</p></Page>
   }
 
   if (state.phase === 'success') {
     return (
-      <Page>
+      <Page title="Запись на звонок">
         <div className="rounded-lg border border-green-200 bg-green-50 p-6 text-center">
           <p className="text-lg font-medium text-green-800">Запись подтверждена!</p>
-          <p className="mt-1 text-sm text-green-700">Мы свяжемся с вами в ближайшее время.</p>
+          <p className="mt-1 text-sm text-green-700">
+            {state.eventType.title} · {formatSlotDate(state.slot.startTime)},{' '}
+            {formatSlotTime(state.slot.startTime, state.eventType.durationMinutes)}
+          </p>
+          <p className="mt-2 text-sm text-green-600">Мы свяжемся с вами в ближайшее время.</p>
         </div>
       </Page>
     )
   }
 
-  const { slots } = state
-
-  if (state.phase === 'idle') {
+  if (state.phase === 'pick-type') {
     return (
-      <Page>
+      <Page title="Запись на звонок">
+        <p className="mb-6 text-muted-foreground">Выберите тип встречи:</p>
+        <ul className="grid gap-4 sm:grid-cols-2">
+          {state.eventTypes.map((et) => (
+            <li key={et.id}>
+              <button
+                type="button"
+                onClick={() => selectEventType(et)}
+                className="w-full rounded-lg border bg-card p-5 text-left shadow-sm transition hover:border-primary hover:shadow-md"
+              >
+                <p className="font-semibold">{et.title}</p>
+                <p className="mt-1 text-sm text-muted-foreground">{et.description}</p>
+                <p className="mt-2 text-xs text-muted-foreground">{et.durationMinutes} мин</p>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </Page>
+    )
+  }
+
+  if (state.phase === 'pick-slot') {
+    const { eventType, slots, eventTypes } = state
+    return (
+      <Page title={eventType.title}>
+        <button
+          type="button"
+          onClick={() => setState({ phase: 'pick-type', eventTypes })}
+          className="mb-5 text-sm text-muted-foreground hover:text-foreground"
+        >
+          ← Назад
+        </button>
         {slots.length === 0 ? (
-          <p className="text-muted-foreground">Свободных слотов нет.</p>
+          <p className="text-muted-foreground">Нет свободных слотов в ближайшие 14 дней.</p>
         ) : (
           <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {slots.map((slot) => (
               <li key={slot.id}>
                 <button
                   type="button"
-                  onClick={() => setState({ phase: 'selecting', slots, slot })}
+                  onClick={() =>
+                    setState({ phase: 'booking', eventTypes, eventType, slots, slot })
+                  }
                   className="w-full rounded-lg border bg-card p-4 text-left shadow-sm transition hover:border-primary hover:shadow-md"
                 >
                   <p className="font-medium capitalize">{formatSlotDate(slot.startTime)}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">{formatSlotTime(slot.startTime, slot.duration)}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {formatSlotTime(slot.startTime, eventType.durationMinutes)}
+                  </p>
                 </button>
               </li>
             ))}
@@ -72,36 +146,25 @@ export default function App() {
     )
   }
 
-  // phase === 'selecting' | 'submitting'
-  const { slot } = state
+  // booking | submitting
+  const { eventType, slot, slots, eventTypes } = state
   const submitting = state.phase === 'submitting'
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault()
-    if (state.phase !== 'selecting') return
-    const fd = new FormData(e.currentTarget)
-    setState({ phase: 'submitting', slots, slot })
-    try {
-      await createBooking(slot.id, fd.get('name') as string, fd.get('email') as string)
-      setState({ phase: 'success' })
-    } catch (err) {
-      setState({ phase: 'error', message: String(err) })
-    }
-  }
-
   return (
-    <Page>
+    <Page title={eventType.title}>
       <div className="mx-auto max-w-md rounded-lg border bg-card p-6 shadow-sm">
         <button
           type="button"
-          onClick={() => setState({ phase: 'idle', slots })}
+          onClick={() => setState({ phase: 'pick-slot', eventTypes, eventType, slots })}
           className="mb-4 text-sm text-muted-foreground hover:text-foreground"
         >
           ← Назад
         </button>
         <h2 className="text-lg font-semibold capitalize">{formatSlotDate(slot.startTime)}</h2>
-        <p className="mb-5 text-sm text-muted-foreground">{formatSlotTime(slot.startTime, slot.duration)}</p>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <p className="mb-5 text-sm text-muted-foreground">
+          {formatSlotTime(slot.startTime, eventType.durationMinutes)}
+        </p>
+        <form onSubmit={handleBooking} className="flex flex-col gap-4">
           <label className="flex flex-col gap-1 text-sm font-medium">
             Имя
             <input
@@ -130,10 +193,15 @@ export default function App() {
   )
 }
 
-function Page({ children }: { children: React.ReactNode }) {
+function Page({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <main className="mx-auto max-w-4xl px-4 py-10">
-      <h1 className="mb-8 text-2xl font-bold tracking-tight">Запись на звонок</h1>
+      <div className="mb-8 flex items-center justify-between">
+        <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
+        <a href="/host" className="text-sm text-muted-foreground hover:text-foreground">
+          Владелец →
+        </a>
+      </div>
       {children}
     </main>
   )

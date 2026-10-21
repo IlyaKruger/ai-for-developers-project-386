@@ -2,10 +2,21 @@
   "name": "backend",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "start": "json-server --watch db.json --port 3001"
+    "start": "tsx src/index.ts",
+    "test": "vitest run"
   },
   "dependencies": {
-    "json-server": "^1.0.0-beta.3"
+    "@hono/node-server": "^2.1.5",
+    "@hono/zod-validator": "^0.9.1",
+    "hono": "^4.13.13",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5.8.0",
+    "vitest": "^2.0.0"
   }
 }

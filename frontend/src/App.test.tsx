@@ -1,17 +1,30 @@
 import { render, screen } from '@testing-library/react'
-import { vi, it, expect } from 'vitest'
+import { vi, it, expect, beforeEach } from 'vitest'
+import { MemoryRouter } from 'react-router-dom'
 import App from './App'
-import * as api from './api'
+import * as sdk from './generated/sdk.gen'
 
-vi.mock('./api', () => ({
-  fetchSlots: vi.fn().mockResolvedValue([]),
-  fetchBookings: vi.fn().mockResolvedValue([]),
-  createBooking: vi.fn(),
+vi.mock('./generated/sdk.gen', () => ({
+  eventTypesList: vi.fn(),
+  slotsList: vi.fn(),
+  bookingsCreate: vi.fn(),
+  bookingsList: vi.fn(),
+  bookingsCancel: vi.fn(),
 }))
 
-it('renders the booking page heading', () => {
-  vi.mocked(api.fetchSlots).mockResolvedValue([])
-  vi.mocked(api.fetchBookings).mockResolvedValue([])
-  render(<App />)
-  expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Запись на звонок')
+beforeEach(() => {
+  vi.mocked(sdk.eventTypesList).mockResolvedValue({
+    data: [],
+    error: undefined,
+    response: new Response(),
+  } as unknown as ReturnType<typeof sdk.eventTypesList>)
+})
+
+it('renders the booking page heading', async () => {
+  render(
+    <MemoryRouter>
+      <App />
+    </MemoryRouter>,
+  )
+  expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('Запись на звонок')
 })

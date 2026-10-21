@@ -4,3 +4,8 @@ dist
 .DS_Store
 .idea/
 .claude/
+# Playwright
+frontend/test-results/
+frontend/playwright-report/
+# TypeSpec build output (openapi.yaml is kept, tsp-output is not)
+contract/tsp-output/

@@ -1,9 +1,8 @@
-import type { Slot, Booking } from '../types'
+import type { Slot } from '../generated/types.gen'
 
-export function getAvailableSlots(slots: Slot[], bookings: Booking[]): Slot[] {
-  const bookedIds = new Set(bookings.map((booking) => booking.slotId))
+export function getAvailableSlots(slots: Slot[], bookedSlotIds: Set<string>): Slot[] {
   const now = new Date()
   return slots.filter(
-    (slot) => !bookedIds.has(slot.id) && new Date(slot.startTime) >= now,
+    (slot) => !bookedSlotIds.has(slot.id) && new Date(slot.startTime) >= now,
   )
 }
