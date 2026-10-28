@@ -5,7 +5,7 @@ A service that lets a host publish available time windows on their calendar and 
 ## Language
 
 **Slot**:
-A specific, one-time date-and-time window on the host's calendar that can be booked. Availability is derived — a slot is available when no active booking exists for it.
+A specific, one-time date-and-time window on the host's calendar that can be booked. Slots are generated automatically by the server from each Event Type's schedule; the host does not create them manually. Availability is derived — a slot is available when no active booking exists for it.
 _Avoid_: time slot, appointment, event, opening
 
 **Booking**:
@@ -17,15 +17,19 @@ A person who books a slot on the public page. Identified only by name and email;
 _Avoid_: user, customer, client, visitor
 
 **Host**:
-The single owner of the calendar. Creates and manages slots, views bookings, and cancels bookings. The host is the only party who can cancel a booking.
+The single owner of the calendar. Creates and manages Event Types (including their title, description, duration, and available hours), views bookings, and cancels bookings. The host is the only party who can cancel a booking. Slots are auto-generated from the Event Type schedule; the host does not create or delete slots manually.
 _Avoid_: admin, owner, organiser
 
+**Event Type**:
+A category of meeting defined by the host. Carries a title, description, duration in minutes, and a list of available hours (the hours of the day at which slots for this type are generated). Multiple Event Types can coexist, each with a different duration and schedule.
+_Avoid_: meeting type, slot type, category
+
 **Slot Generation**:
-The process by which the host creates multiple slots at once by supplying a date range, days of week, time window, and duration. Slots that already exist within the requested range are skipped.
-_Avoid_: slot creation, bulk create, scheduling
+The automatic server-side process that computes available slots on each `GET /slots` request. For every Event Type, for every day in the rolling booking window, for each hour in `EventType.availableHours`, a slot is generated (in the configured timezone) unless it overlaps with an existing booking. No host action is required.
+_Avoid_: slot creation, bulk create, scheduling, manual scheduling
 
 **Duration**:
-The fixed length of every slot, set once for the entire calendar. All slots share the same duration.
+The length of a meeting, set per Event Type. Each Event Type carries its own `durationMinutes`; all slots generated for that type share its duration. Duration does not vary between individual slots of the same type.
 _Avoid_: length, time block, interval
 
 **Available Slot**:
@@ -35,3 +39,7 @@ _Avoid_: open slot, free slot, unbooked slot
 **Cancellation**:
 The act of removing a booking, performed by the host only. Cancelling a booking returns the slot to available.
 _Avoid_: deletion (of a booking), removal
+
+**Booking Window**:
+The range of calendar days for which slots are generated, counted from today. Controlled by `BOOKING_WINDOW_START` (first day offset, default 1 = tomorrow) and `BOOKING_WINDOW_DAYS` (window length, default 14). The window rolls forward with the current date — it never expires.
+_Avoid_: availability window, slot horizon

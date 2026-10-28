@@ -3,7 +3,8 @@ dist
 *.local
 .DS_Store
 .idea/
-.claude/
+.claude/*
+!.claude/settings.template.json
 # Playwright
 frontend/test-results/
 frontend/playwright-report/

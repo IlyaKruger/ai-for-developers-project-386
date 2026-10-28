@@ -29,6 +29,7 @@ export type CreateEventTypeRequest = {
     title: string;
     description: string;
     durationMinutes: number;
+    availableHours: Array<number>;
 };
 
 export type EventType = {
@@ -36,6 +37,7 @@ export type EventType = {
     title: string;
     description: string;
     durationMinutes: number;
+    availableHours: Array<number>;
 };
 
 export type NotFoundError = {

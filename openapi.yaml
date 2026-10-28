@@ -165,6 +165,7 @@ components:
         - title
         - description
         - durationMinutes
+        - availableHours
       properties:
         title:
           type: string
@@ -173,6 +174,11 @@ components:
         durationMinutes:
           type: integer
           format: int32
+        availableHours:
+          type: array
+          items:
+            type: integer
+            format: int32
     EventType:
       type: object
       required:
@@ -180,6 +186,7 @@ components:
         - title
         - description
         - durationMinutes
+        - availableHours
       properties:
         id:
           type: string
@@ -190,6 +197,11 @@ components:
         durationMinutes:
           type: integer
           format: int32
+        availableHours:
+          type: array
+          items:
+            type: integer
+            format: int32
     NotFoundError:
       type: object
       required:

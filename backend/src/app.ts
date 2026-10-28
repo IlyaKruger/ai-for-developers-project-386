@@ -4,9 +4,20 @@ import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import type { Db } from "./db.js";
+import type { SlotConfig } from "./slot-config.js";
+import { createSlotConfig } from "./slot-config.js";
+import { generateSlots } from "./slot-generator.js";
 import { overlaps } from "./overlap.js";
 
-export function createApp(db: Db) {
+export type AppOptions = {
+  slotConfig?: SlotConfig;
+  now?: () => Date;
+};
+
+export function createApp(db: Db, options: AppOptions = {}) {
+  const slotConfig = options.slotConfig ?? createSlotConfig();
+  const getNow = options.now ?? (() => new Date());
+
   const app = new Hono();
 
   app.use("*", cors({ origin: "*" }));
@@ -22,6 +33,7 @@ export function createApp(db: Db) {
         title: z.string().min(1),
         description: z.string(),
         durationMinutes: z.number().int().positive(),
+        availableHours: z.array(z.number().int().min(0).max(23)),
       }),
     ),
     (c) => {
@@ -40,27 +52,16 @@ export function createApp(db: Db) {
     const et = db.eventTypes.find((e) => e.id === eventTypeId);
     if (!et) return c.json({ code: "NOT_FOUND", message: "Event type not found" }, 404);
 
-    const now = new Date();
-    const cutoff = new Date(now.getTime() + 14 * 24 * 60 * 60_000);
-    const bookedSlotIds = new Set(db.bookings.map((b) => b.slotId));
-
-    const available = db.slots.filter((s) => {
-      if (s.eventTypeId !== eventTypeId) return false;
-      const start = new Date(s.startTime);
-      if (start <= now || start > cutoff) return false;
-      if (bookedSlotIds.has(s.id)) return false;
-      // exclude slots that overlap with any existing booking
-      return !db.bookings.some((b) =>
-        overlaps(s.startTime, et.durationMinutes, b.startTime, b.durationMinutes),
-      );
-    });
+    const now = getNow();
+    const all = generateSlots(db.eventTypes, db.bookings, slotConfig, now);
+    const available = all.filter((s) => s.eventTypeId === eventTypeId);
 
     return c.json(available);
   });
 
   // ── Bookings ──────────────────────────────────────────────────────────────
   app.get("/bookings", (c) => {
-    const now = new Date();
+    const now = getNow();
     const upcoming = db.bookings
       .filter((b) => new Date(b.startTime) >= now)
       .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
@@ -79,14 +80,17 @@ export function createApp(db: Db) {
     ),
     (c) => {
       const { slotId, bookerName, bookerEmail } = c.req.valid("json");
+      const now = getNow();
 
-      const slot = db.slots.find((s) => s.id === slotId);
+      // Verify the slot exists in the rolling window (ignoring current bookings).
+      // Booking filter is checked separately so we can return 409 vs 404 correctly.
+      const allSlots = generateSlots(db.eventTypes, [], slotConfig, now);
+      const slot = allSlots.find((s) => s.id === slotId);
       if (!slot) return c.json({ code: "NOT_FOUND", message: "Slot not found" }, 404);
 
       const et = db.eventTypes.find((e) => e.id === slot.eventTypeId);
       if (!et) return c.json({ code: "NOT_FOUND", message: "Event type not found" }, 404);
 
-      const now = new Date();
       if (new Date(slot.startTime) <= now) {
         return c.json({ code: "SLOT_UNAVAILABLE", message: "Slot is in the past" }, 409);
       }

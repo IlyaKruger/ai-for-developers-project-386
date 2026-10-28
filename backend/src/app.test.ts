@@ -2,16 +2,37 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { createApp } from './app.js'
 import { createDb } from './db.js'
 import type { Db } from './db.js'
+import type { SlotConfig } from './slot-config.js'
+
+const TEST_CONFIG: SlotConfig = {
+  timezone: 'Europe/Moscow',
+  windowDays: 14,
+  windowStartOffsetDays: 1,
+}
+
+/** Returns a now() that is `days` days after the given base date */
+function nowAt(base: Date, days = 0): () => Date {
+  return () => new Date(base.getTime() + days * 86_400_000)
+}
+
+const BASE_NOW = new Date('2024-01-15T10:00:00Z')
 
 let db: Db
 let app: ReturnType<typeof createApp>
 
 beforeEach(() => {
   db = createDb()
-  app = createApp(db)
+  app = createApp(db, { slotConfig: TEST_CONFIG, now: nowAt(BASE_NOW) })
 })
 
 async function json(res: Response) {
+  return res.json()
+}
+
+/** Fetches available slots for the first event type */
+async function getSlots(): Promise<Array<{ id: string; eventTypeId: string; startTime: string }>> {
+  const et = db.eventTypes[0]
+  const res = await app.request(`/slots?eventTypeId=${et.id}`)
   return res.json()
 }
 
@@ -41,8 +62,9 @@ describe('GET /slots', () => {
   })
 
   it('excludes slots that are booked', async () => {
+    const slots = await getSlots()
+    const slot = slots[0]
     const et = db.eventTypes[0]
-    const slot = db.slots.find((s) => s.eventTypeId === et.id)!
     db.bookings.push({
       id: 'b-1',
       slotId: slot.id,
@@ -52,16 +74,32 @@ describe('GET /slots', () => {
       bookerName: 'Alice',
       bookerEmail: 'alice@example.com',
     })
-    const res = await app.request(`/slots?eventTypeId=${et.id}`)
-    const body: Array<{ id: string }> = await json(res)
-    expect(body.find((s) => s.id === slot.id)).toBeUndefined()
+    const after = await getSlots()
+    expect(after.find((s) => s.id === slot.id)).toBeUndefined()
+  })
+
+  it('rolling window: still returns slots 15 days after base now', async () => {
+    // Simulate the server having been running for 15 days — all original static slots
+    // would be in the past, but the rolling window always covers the next 14 days.
+    const lateApp = createApp(db, { slotConfig: TEST_CONFIG, now: nowAt(BASE_NOW, 15) })
+    const etId = db.eventTypes[0].id
+    const res = await lateApp.request(`/slots?eventTypeId=${etId}`)
+    expect(res.status).toBe(200)
+    const body = await json(res)
+    expect(body.length).toBeGreaterThan(0)
+  })
+
+  it('returns 404 for unknown event type', async () => {
+    const res = await app.request('/slots?eventTypeId=nonexistent')
+    expect(res.status).toBe(404)
   })
 })
 
 describe('POST /bookings', () => {
   it('creates a booking and returns 201', async () => {
     const et = db.eventTypes[0]
-    const slot = db.slots.find((s) => s.eventTypeId === et.id)!
+    const slots = await getSlots()
+    const slot = slots[0]
     const res = await app.request('/bookings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -78,8 +116,8 @@ describe('POST /bookings', () => {
   })
 
   it('returns 409 when the same slot is booked twice', async () => {
-    const et = db.eventTypes[0]
-    const slot = db.slots.find((s) => s.eventTypeId === et.id)!
+    const slots = await getSlots()
+    const slot = slots[0]
     const payload = JSON.stringify({ slotId: slot.id, bookerName: 'Alice', bookerEmail: 'alice@example.com' })
     await app.request('/bookings', {
       method: 'POST',
@@ -96,58 +134,107 @@ describe('POST /bookings', () => {
     expect(body.code).toBe('SLOT_UNAVAILABLE')
   })
 
-  it('returns 409 for a different event type that overlaps in time', async () => {
-    const et1 = db.eventTypes[0] // 30 min
-    const et2 = db.eventTypes[1] // 60 min
+  it('returns 409 when a 30-min booking at 10:30 partially overlaps a 60-min slot at 10:00 (POST /bookings)', async () => {
+    // Scenario: someone already booked a 30-min slot at 10:30 Moscow.
+    // A new 60-min slot starting at 10:00 Moscow covers 10:00–11:00,
+    // which overlaps with the existing [10:30, 11:00) booking.
+    //
+    // BASE_NOW = 2024-01-15T10:00Z; first window day = 2024-01-16 in Moscow.
+    // 10:00 Moscow (UTC+3) = 07:00 UTC on 2024-01-16.
+    // 10:30 Moscow          = 07:30 UTC on 2024-01-16.
 
-    // Find a slot in et2 that starts at the same time as a slot in et1
-    const slot1 = db.slots.find((s) => s.eventTypeId === et1.id)!
-    const slot2 = db.slots.find(
-      (s) => s.eventTypeId === et2.id && s.startTime === slot1.startTime,
-    )
-
-    if (!slot2) {
-      // If no exact match, ensure the overlap detection works with existing times
-      // by manually creating a slot2 that overlaps
-      const overlapSlot = {
-        id: 'test-overlap',
-        eventTypeId: et2.id,
-        startTime: slot1.startTime,
-      }
-      db.slots.push(overlapSlot)
-
-      await app.request('/bookings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slotId: slot1.id, bookerName: 'Alice', bookerEmail: 'alice@example.com' }),
-      })
-      const res = await app.request('/bookings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slotId: overlapSlot.id, bookerName: 'Bob', bookerEmail: 'bob@example.com' }),
-      })
-      expect(res.status).toBe(409)
-    } else {
-      await app.request('/bookings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slotId: slot1.id, bookerName: 'Alice', bookerEmail: 'alice@example.com' }),
-      })
-      const res = await app.request('/bookings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slotId: slot2.id, bookerName: 'Bob', bookerEmail: 'bob@example.com' }),
-      })
-      expect(res.status).toBe(409)
+    const et60 = {
+      id: 'et-60',
+      title: '60min',
+      description: '',
+      durationMinutes: 60,
+      availableHours: [10],
     }
+    const localDb = { eventTypes: [et60], bookings: [] as typeof db.bookings }
+    const localApp = createApp(localDb, { slotConfig: TEST_CONFIG, now: nowAt(BASE_NOW) })
+
+    // Get the 60-min slot at 10:00 Moscow via the API
+    const slotsRes = await localApp.request(`/slots?eventTypeId=${et60.id}`)
+    const slots: Array<{ id: string; startTime: string }> = await slotsRes.json()
+    const slot1000 = slots[0] // earliest: 10:00 Moscow = 07:00 UTC on 2024-01-16
+
+    // Inject a pre-existing 30-min booking at 10:30 Moscow (07:30 UTC)
+    const t1030 = new Date(new Date(slot1000.startTime).getTime() + 30 * 60_000).toISOString()
+    localDb.bookings.push({
+      id: 'existing-b',
+      slotId: 'some-other-slot',
+      eventTypeId: 'any',
+      startTime: t1030,
+      durationMinutes: 30,
+      bookerName: 'Alice',
+      bookerEmail: 'alice@example.com',
+    })
+
+    // Trying to book the 60-min slot at 10:00 must fail: [10:00,11:00) ∩ [10:30,11:00) ≠ ∅
+    const res = await localApp.request('/bookings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slotId: slot1000.id, bookerName: 'Bob', bookerEmail: 'bob@example.com' }),
+    })
+    expect(res.status).toBe(409)
+    const body = await res.json()
+    expect(body.code).toBe('SLOT_UNAVAILABLE')
+  })
+
+  it('GET /slots excludes a 60-min slot at 10:00 when a 30-min booking at 10:30 exists', async () => {
+    // Same partial-overlap scenario tested from the slot-listing side.
+    // generateSlots must filter out any slot whose window overlaps an existing booking.
+
+    const et60 = {
+      id: 'et-60',
+      title: '60min',
+      description: '',
+      durationMinutes: 60,
+      availableHours: [10],
+    }
+    const localDb = { eventTypes: [et60], bookings: [] as typeof db.bookings }
+    const localApp = createApp(localDb, { slotConfig: TEST_CONFIG, now: nowAt(BASE_NOW) })
+
+    // Snapshot slots before any booking
+    const before: Array<{ id: string; startTime: string }> = await (
+      await localApp.request(`/slots?eventTypeId=${et60.id}`)
+    ).json()
+    const slot1000 = before[0]
+
+    // Inject a 30-min booking at 10:30 (30 min into the 60-min window)
+    const t1030 = new Date(new Date(slot1000.startTime).getTime() + 30 * 60_000).toISOString()
+    localDb.bookings.push({
+      id: 'b-partial',
+      slotId: 'other',
+      eventTypeId: 'any',
+      startTime: t1030,
+      durationMinutes: 30,
+      bookerName: 'Alice',
+      bookerEmail: 'alice@example.com',
+    })
+
+    // The 10:00 slot must now be absent from the listing
+    const after: Array<{ id: string }> = await (
+      await localApp.request(`/slots?eventTypeId=${et60.id}`)
+    ).json()
+    expect(after.find((s) => s.id === slot1000.id)).toBeUndefined()
+    expect(after.length).toBe(before.length - 1)
+  })
+
+  it('returns 404 for unknown slotId', async () => {
+    const res = await app.request('/bookings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slotId: 'nonexistent', bookerName: 'Alice', bookerEmail: 'alice@example.com' }),
+    })
+    expect(res.status).toBe(404)
   })
 })
 
 describe('GET /bookings', () => {
   it('returns only upcoming bookings sorted by startTime', async () => {
-    const et = db.eventTypes[0]
-    const slots = db.slots.filter((s) => s.eventTypeId === et.id).slice(0, 2)
-    for (const slot of slots) {
+    const slots = await getSlots()
+    for (const slot of slots.slice(0, 2)) {
       await app.request('/bookings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -164,8 +251,8 @@ describe('GET /bookings', () => {
 
 describe('DELETE /bookings/:id', () => {
   it('cancels a booking and returns 204', async () => {
-    const et = db.eventTypes[0]
-    const slot = db.slots.find((s) => s.eventTypeId === et.id)!
+    const slots = await getSlots()
+    const slot = slots[0]
     const createRes = await app.request('/bookings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

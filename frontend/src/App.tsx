@@ -9,7 +9,7 @@ type State =
   | { phase: 'loading' }
   | { phase: 'pick-type'; eventTypes: EventType[] }
   | { phase: 'loading-slots'; eventTypes: EventType[]; eventType: EventType }
-  | { phase: 'pick-slot'; eventTypes: EventType[]; eventType: EventType; slots: Slot[] }
+  | { phase: 'pick-slot'; eventTypes: EventType[]; eventType: EventType; slots: Slot[]; conflictBanner?: string }
   | { phase: 'booking'; eventTypes: EventType[]; eventType: EventType; slots: Slot[]; slot: Slot }
   | { phase: 'submitting'; eventTypes: EventType[]; eventType: EventType; slots: Slot[]; slot: Slot }
   | { phase: 'success'; eventType: EventType; slot: Slot }
@@ -57,7 +57,20 @@ export default function App() {
       },
     })
     if (r.error) {
-      setState({ phase: 'error', message: (r.error as { message?: string }).message ?? 'Ошибка бронирования' })
+      const errCode = (r.error as { code?: string }).code
+      if (errCode === 'SLOT_UNAVAILABLE') {
+        // Slot was taken between listing and booking — refresh the list and show inline banner
+        const fresh = await slotsList({ query: { eventTypeId: slot.eventTypeId } })
+        setState({
+          phase: 'pick-slot',
+          eventTypes,
+          eventType,
+          slots: fresh.data ?? [],
+          conflictBanner: 'Этот слот только что заняли. Пожалуйста, выберите другое время.',
+        })
+      } else {
+        setState({ phase: 'error', message: (r.error as { message?: string }).message ?? 'Ошибка бронирования' })
+      }
       return
     }
     setState({ phase: 'success', eventType, slot })
@@ -110,7 +123,7 @@ export default function App() {
   }
 
   if (state.phase === 'pick-slot') {
-    const { eventType, slots, eventTypes } = state
+    const { eventType, slots, eventTypes, conflictBanner } = state
     return (
       <Page title={eventType.title}>
         <button
@@ -120,6 +133,11 @@ export default function App() {
         >
           ← Назад
         </button>
+        {conflictBanner && (
+          <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {conflictBanner}
+          </div>
+        )}
         {slots.length === 0 ? (
           <p className="text-muted-foreground">Нет свободных слотов в ближайшие 14 дней.</p>
         ) : (

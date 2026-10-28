@@ -15,12 +15,14 @@ model EventType {
   title: string;
   description: string;
   durationMinutes: int32;
+  availableHours: int32[];
 }
 
 model CreateEventTypeRequest {
   title: string;
   description: string;
   durationMinutes: int32;
+  availableHours: int32[];
 }
 
 model Slot {

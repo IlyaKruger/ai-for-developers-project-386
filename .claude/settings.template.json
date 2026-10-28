@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "render": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@render-oss/mcp-server-render"],
+      "env": {
+        "RENDER_API_KEY": "YOUR_RENDER_API_KEY"
+      }
+    }
+  }
+}
