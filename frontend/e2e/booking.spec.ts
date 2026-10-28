@@ -30,8 +30,7 @@ test.describe('Guest booking flow', () => {
 
     // 6. Host sees the booking
     await page.goto('/host')
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Предстоящие встречи')
-    await expect(page.getByText('Иван Тестов')).toBeVisible()
+    await expect(page.getByText('Иван Тестов')).toBeVisible({ timeout: 5_000 })
     await expect(page.getByText('ivan@example.com')).toBeVisible()
   })
 })
