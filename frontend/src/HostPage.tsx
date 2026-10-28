@@ -2,7 +2,20 @@ import { useEffect, useState } from 'react'
 import './client'
 import { bookingsList, bookingsCancel, eventTypesList, eventTypesCreate } from './generated/sdk.gen'
 import { formatSlotDate, formatSlotTime } from './lib/format'
-import type { Booking, EventType } from './generated/types.gen'
+import type { Booking, EventType, WeeklySchedule } from './generated/types.gen'
+
+const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const
+const DAY_LABELS: Record<string, string> = {
+  mon: 'Пн', tue: 'Вт', wed: 'Ср', thu: 'Чт', fri: 'Пт', sat: 'Сб', sun: 'Вс',
+}
+type DayKey = typeof DAY_KEYS[number]
+
+function scheduleLabel(schedule: WeeklySchedule): string {
+  return DAY_KEYS
+    .filter(k => (schedule[k]?.length ?? 0) > 0)
+    .map(k => `${DAY_LABELS[k]}: ${schedule[k]!.join(', ')}`)
+    .join(' · ') || 'Нет рабочих часов'
+}
 
 type Tab = 'bookings' | 'event-types'
 
@@ -74,8 +87,17 @@ function BookingsTab() {
 
 // ── Event Types tab ───────────────────────────────────────────────────────────
 
-const DEFAULT_HOURS = [9, 10, 11, 14, 15, 16]
 const ALL_HOURS = Array.from({ length: 24 }, (_, i) => i)
+
+const DEFAULT_SELECTED_HOURS: Record<DayKey, Set<number>> = {
+  mon: new Set([10, 11, 14, 15, 16]),
+  tue: new Set([10, 11, 14, 15, 16]),
+  wed: new Set([10, 11, 14, 15, 16]),
+  thu: new Set([10, 11, 14, 15, 16]),
+  fri: new Set([10, 11, 14, 15, 16]),
+  sat: new Set(),
+  sun: new Set(),
+}
 
 type EventTypesState =
   | { phase: 'loading' }
@@ -85,7 +107,7 @@ type EventTypesState =
 
 function EventTypesTab() {
   const [state, setState] = useState<EventTypesState>({ phase: 'loading' })
-  const [selectedHours, setSelectedHours] = useState<Set<number>>(new Set(DEFAULT_HOURS))
+  const [selectedHours, setSelectedHours] = useState<Record<DayKey, Set<number>>>(DEFAULT_SELECTED_HOURS)
 
   function load() {
     eventTypesList()
@@ -98,11 +120,11 @@ function EventTypesTab() {
 
   useEffect(load, [])
 
-  function toggleHour(h: number) {
+  function toggleHour(day: DayKey, h: number) {
     setSelectedHours((prev) => {
-      const next = new Set(prev)
+      const next = new Set(prev[day])
       if (next.has(h)) { next.delete(h) } else { next.add(h) }
-      return next
+      return { ...prev, [day]: next }
     })
   }
 
@@ -110,21 +132,27 @@ function EventTypesTab() {
     e.preventDefault()
     if (state.phase !== 'idle') return
 
-    const hours = [...selectedHours].sort((a, b) => a - b)
-    if (hours.length === 0) {
-      setState({ ...state, formError: 'Выберите хотя бы один час.' })
+    const hasAny = DAY_KEYS.some(k => selectedHours[k].size > 0)
+    if (!hasAny) {
+      setState({ ...state, formError: 'Выберите хотя бы один день и один час.' })
       return
     }
 
     const fd = new FormData(e.currentTarget)
     setState({ phase: 'submitting', eventTypes: state.eventTypes })
 
+    const schedule = Object.fromEntries(
+      DAY_KEYS
+        .filter(k => selectedHours[k].size > 0)
+        .map(k => [k, [...selectedHours[k]].sort((a, b) => a - b)])
+    )
+
     const r = await eventTypesCreate({
       body: {
         title: fd.get('title') as string,
         description: (fd.get('description') as string) ?? '',
         durationMinutes: Number(fd.get('durationMinutes')),
-        availableHours: hours,
+        schedule,
       },
     })
 
@@ -138,7 +166,7 @@ function EventTypesTab() {
     }
 
     // Reset hours selection and reload list
-    setSelectedHours(new Set(DEFAULT_HOURS))
+    setSelectedHours(DEFAULT_SELECTED_HOURS)
     const form = e.target as HTMLFormElement
     form.reset()
     load()
@@ -165,7 +193,7 @@ function EventTypesTab() {
                 <p className="mt-1 text-sm text-muted-foreground">{et.description}</p>
               )}
               <p className="mt-2 text-xs text-muted-foreground">
-                {et.durationMinutes} мин · Часы: {et.availableHours.join(', ')}
+                {et.durationMinutes} мин · {scheduleLabel(et.schedule)}
               </p>
             </li>
           ))}
@@ -207,24 +235,31 @@ function EventTypesTab() {
           </label>
           <fieldset>
             <legend className="mb-2 text-sm font-medium">Доступные часы</legend>
-            <div className="flex flex-wrap gap-2">
-              {ALL_HOURS.map((h) => (
-                <label
-                  key={h}
-                  className={`flex h-9 w-12 cursor-pointer items-center justify-center rounded-md border text-sm transition
-                    ${selectedHours.has(h)
-                      ? 'border-primary bg-primary/10 font-medium text-primary'
-                      : 'border-border bg-background text-muted-foreground hover:border-primary/50'
-                    }`}
-                >
-                  <input
-                    type="checkbox"
-                    className="sr-only"
-                    checked={selectedHours.has(h)}
-                    onChange={() => toggleHour(h)}
-                  />
-                  {String(h).padStart(2, '0')}
-                </label>
+            <div className="flex flex-col gap-3">
+              {DAY_KEYS.map((day) => (
+                <div key={day} className="flex items-start gap-3">
+                  <span className="w-6 pt-2 text-sm font-medium text-muted-foreground">{DAY_LABELS[day]}</span>
+                  <div className="flex flex-wrap gap-2">
+                    {ALL_HOURS.map((h) => (
+                      <label
+                        key={h}
+                        className={`flex h-9 w-12 cursor-pointer items-center justify-center rounded-md border text-sm transition
+                          ${selectedHours[day].has(h)
+                            ? 'border-primary bg-primary/10 font-medium text-primary'
+                            : 'border-border bg-background text-muted-foreground hover:border-primary/50'
+                          }`}
+                      >
+                        <input
+                          type="checkbox"
+                          className="sr-only"
+                          checked={selectedHours[day].has(h)}
+                          onChange={() => toggleHour(day, h)}
+                        />
+                        {String(h).padStart(2, '0')}
+                      </label>
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
           </fieldset>

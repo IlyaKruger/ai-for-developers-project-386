@@ -25,6 +25,16 @@ export type CreateBookingRequest = {
     bookerEmail: string;
 };
 
+export type WeeklySchedule = {
+    mon?: Array<number>;
+    tue?: Array<number>;
+    wed?: Array<number>;
+    thu?: Array<number>;
+    fri?: Array<number>;
+    sat?: Array<number>;
+    sun?: Array<number>;
+};
+
 export type CreateEventTypeRequest = {
     title: string;
     description: string;
