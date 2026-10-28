@@ -5,51 +5,69 @@ on:
   pull_request:
 
 jobs:
-  frontend:
+  # ── Single gate: lint + types + unit tests + e2e ──────────────────────────
+  # Run locally with: npm run check
+  check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: |
+            frontend/package-lock.json
+            backend/package-lock.json
+
       - name: Install frontend dependencies
         run: npm ci --prefix frontend
-      - name: Lint
-        run: npm run lint --prefix frontend
-      - name: Unit tests
-        run: npm test --prefix frontend
 
-  backend:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: backend/package-lock.json
       - name: Install backend dependencies
         run: npm ci --prefix backend
-      - name: Unit + integration tests
-        run: npm test --prefix backend
 
-  e2e:
-    runs-on: ubuntu-latest
-    needs: [frontend, backend]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      - name: Install frontend dependencies
-        run: npm ci --prefix frontend
-      - name: Install backend dependencies
-        run: npm ci --prefix backend
       - name: Install Playwright browsers
         run: npx --prefix frontend playwright install --with-deps chromium
-      - name: Run e2e tests
-        run: npm run test:e2e --prefix frontend
+
+      - name: Lint (frontend + backend)
+        run: npm run lint
+
+      - name: Type check (frontend + backend)
+        run: npm run typecheck
+
+      - name: Unit tests (frontend + backend)
+        run: npm run test:unit
+
+      - name: E2e tests (browser)
+        run: npm run test:e2e
+
+  # ── Contract freshness: regenerate and assert no diff ─────────────────────
+  # Catches contract/SDK drift before it reaches main.
+  generate-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            contract/package-lock.json
+            frontend/package-lock.json
+
+      - name: Install contract dependencies
+        run: npm ci --prefix contract
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix frontend
+
+      - name: Regenerate OpenAPI and client SDK
+        run: npm run generate
+
+      - name: Assert no generated files changed
+        run: |
+          git diff --exit-code openapi.yaml frontend/src/generated/ || {
+            echo "Generated files are out of date. Run 'npm run generate' locally and commit the result."
+            exit 1
+          }
