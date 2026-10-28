@@ -17,15 +17,19 @@ A person who books a slot on the public page. Identified only by name and email;
 _Avoid_: user, customer, client, visitor
 
 **Host**:
-The single owner of the calendar. Creates and manages Event Types (including their title, description, duration, and available hours), views bookings, and cancels bookings. The host is the only party who can cancel a booking. Slots are auto-generated from the Event Type schedule; the host does not create or delete slots manually.
+The single owner of the calendar. Creates and manages Event Types (including their title, description, duration, and weekly schedule), views bookings, and cancels bookings. The host is the only party who can cancel a booking. Slots are auto-generated from the Event Type schedule; the host does not create or delete slots manually.
 _Avoid_: admin, owner, organiser
 
 **Event Type**:
-A category of meeting defined by the host. Carries a title, description, duration in minutes, and a list of available hours (the hours of the day at which slots for this type are generated). Multiple Event Types can coexist, each with a different duration and schedule.
+A category of meeting defined by the host. Carries a title, description, duration in minutes, and a weekly schedule (`schedule: WeeklySchedule`) — a per-day map of start hours at which slots are generated. Multiple Event Types can coexist, each with a different duration and schedule.
 _Avoid_: meeting type, slot type, category
 
+**Weekly Schedule**:
+A per-day map (`mon`–`sun`) of integer hours (0–23) at which slots are generated for an Event Type. Days absent from the map (or mapped to an empty array) produce no slots. Replaces the earlier single `availableHours` list, enabling different hours on different days of the week.
+_Avoid_: available hours, working hours, schedule array
+
 **Slot Generation**:
-The automatic server-side process that computes available slots on each `GET /slots` request. For every Event Type, for every day in the rolling booking window, for each hour in `EventType.availableHours`, a slot is generated (in the configured timezone) unless it overlaps with an existing booking. No host action is required.
+The automatic server-side process that computes available slots on each `GET /slots` request. For every Event Type, for every day in the rolling booking window, for each hour in `EventType.schedule[dayOfWeek]`, one or more slots are generated (in the configured timezone, stepping by `BOOKING_STEP_MINUTES`) unless they overlap with an existing booking. No host action is required.
 _Avoid_: slot creation, bulk create, scheduling, manual scheduling
 
 **Duration**:
