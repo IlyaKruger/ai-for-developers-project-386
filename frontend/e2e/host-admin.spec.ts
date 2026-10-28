@@ -27,7 +27,7 @@ test.describe('Host admin: event type management', () => {
     // New event type appears in the list
     await expect(page.getByText('Быстрый созвон')).toBeVisible({ timeout: 5_000 })
     await expect(page.getByText('15 минут без подготовки')).toBeVisible()
-    await expect(page.getByText(/^15 мин · Часы:/)).toBeVisible()
+    await expect(page.getByText(/^15 мин · /)).toBeVisible()
   })
 
   test('new event type appears on the public booking page', async ({ page }) => {
@@ -38,7 +38,7 @@ test.describe('Host admin: event type management', () => {
         title: 'API-created тип',
         description: 'создан через API',
         durationMinutes: 20,
-        availableHours: [10],
+        schedule: { mon: [10], tue: [10], wed: [10], thu: [10], fri: [10] },
       },
     })
     expect(etRes.status()).toBe(201)

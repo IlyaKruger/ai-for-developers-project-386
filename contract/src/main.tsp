@@ -10,19 +10,29 @@ namespace CalendarBooking;
 
 // ── Models ────────────────────────────────────────────────────────────────────
 
+model WeeklySchedule {
+  mon?: int32[];
+  tue?: int32[];
+  wed?: int32[];
+  thu?: int32[];
+  fri?: int32[];
+  sat?: int32[];
+  sun?: int32[];
+}
+
 model EventType {
   id: string;
   title: string;
   description: string;
   durationMinutes: int32;
-  availableHours: int32[];
+  schedule: WeeklySchedule;
 }
 
 model CreateEventTypeRequest {
   title: string;
   description: string;
   durationMinutes: int32;
-  availableHours: int32[];
+  schedule: WeeklySchedule;
 }
 
 model Slot {

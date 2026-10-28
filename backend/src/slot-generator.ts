@@ -1,7 +1,14 @@
 import { createHash } from "node:crypto";
-import type { EventType, Booking } from "./db.js";
+import type { EventType, Booking, WeeklySchedule } from "./db.js";
 import type { SlotConfig } from "./slot-config.js";
 import { overlaps } from "./overlap.js";
+
+function getDayKey(date: Date, timezone: string): keyof WeeklySchedule {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    weekday: "short",
+  }).format(date).toLowerCase().slice(0, 3) as keyof WeeklySchedule;
+}
 
 export type GeneratedSlot = {
   id: string;
@@ -74,7 +81,10 @@ export function generateSlots(
     const dayRef = new Date(dayMs);
 
     for (const et of eventTypes) {
-      for (const hour of et.availableHours) {
+      const dayKey = getDayKey(dayRef, config.timezone);
+      const hours = et.schedule[dayKey] ?? [];
+      if (hours.length === 0) continue;
+      for (const hour of hours) {
         let offsetMin = 0;
         while (offsetMin + et.durationMinutes <= 60) {
           const start = slotStartUtc(dayRef, hour, config.timezone, offsetMin);

@@ -33,7 +33,15 @@ export function createApp(db: Db, options: AppOptions = {}) {
         title: z.string().min(1),
         description: z.string(),
         durationMinutes: z.number().int().positive(),
-        availableHours: z.array(z.number().int().min(0).max(23)),
+        schedule: z.object({
+          mon: z.array(z.number().int().min(0).max(23)).optional(),
+          tue: z.array(z.number().int().min(0).max(23)).optional(),
+          wed: z.array(z.number().int().min(0).max(23)).optional(),
+          thu: z.array(z.number().int().min(0).max(23)).optional(),
+          fri: z.array(z.number().int().min(0).max(23)).optional(),
+          sat: z.array(z.number().int().min(0).max(23)).optional(),
+          sun: z.array(z.number().int().min(0).max(23)).optional(),
+        }),
       }),
     ),
     (c) => {

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { createApp } from './app.js'
 import { createDb } from './db.js'
 import type { Db } from './db.js'
+import type { WeeklySchedule } from './db.js'
 import type { SlotConfig } from './slot-config.js'
 
 const TEST_CONFIG: SlotConfig = {
@@ -149,7 +150,7 @@ describe('POST /bookings', () => {
       title: '60min',
       description: '',
       durationMinutes: 60,
-      availableHours: [10],
+      schedule: { mon: [10], tue: [10], wed: [10], thu: [10], fri: [10], sat: [10], sun: [10] },
     }
     const localDb = { eventTypes: [et60], bookings: [] as typeof db.bookings }
     const localApp = createApp(localDb, { slotConfig: TEST_CONFIG, now: nowAt(BASE_NOW) })
@@ -191,7 +192,7 @@ describe('POST /bookings', () => {
       title: '60min',
       description: '',
       durationMinutes: 60,
-      availableHours: [10],
+      schedule: { mon: [10], tue: [10], wed: [10], thu: [10], fri: [10], sat: [10], sun: [10] },
     }
     const localDb = { eventTypes: [et60], bookings: [] as typeof db.bookings }
     const localApp = createApp(localDb, { slotConfig: TEST_CONFIG, now: nowAt(BASE_NOW) })
@@ -268,5 +269,96 @@ describe('DELETE /bookings/:id', () => {
   it('returns 404 for unknown booking', async () => {
     const res = await app.request('/bookings/nonexistent', { method: 'DELETE' })
     expect(res.status).toBe(404)
+  })
+})
+
+describe('GET /slots — per-weekday schedule', () => {
+  function makeDb(schedule: WeeklySchedule): Db {
+    const localDb = createDb()
+    localDb.eventTypes = [{
+      id: 'test-et',
+      title: 'Test',
+      description: '',
+      durationMinutes: 60,
+      schedule,
+    }]
+    localDb.bookings = []
+    return localDb
+  }
+
+  // BASE_NOW = Mon 15 Jan 2024 10:00 UTC
+  // windowStartOffsetDays: 1 → window starts Tue 16 Jan 2024
+  // window covers: Tue 16 Jan – Mon 29 Jan 2024 (14 days)
+
+  it('no slots on Saturday when schedule has no Saturday hours', async () => {
+    // Schedule only covers Tue–Fri; no Saturday entry
+    const localDb = makeDb({ tue: [10], wed: [10], thu: [10], fri: [10] })
+    const localApp = createApp(localDb, { slotConfig: TEST_CONFIG, now: nowAt(BASE_NOW) })
+
+    const res = await localApp.request('/slots?eventTypeId=test-et')
+    expect(res.status).toBe(200)
+    const slots: Array<{ startTime: string }> = await res.json()
+
+    // Verify there is at least one slot (to confirm scheduling works)
+    expect(slots.length).toBeGreaterThan(0)
+
+    // None of the slots should fall on a Saturday (getDay() === 6)
+    const saturdaySlots = slots.filter((s) => new Date(s.startTime).getDay() === 6)
+    expect(saturdaySlots).toHaveLength(0)
+  })
+
+  it('Saturday hours differ from weekday hours', async () => {
+    // Tuesday slots at 9:00 Moscow (06:00 UTC), Saturday slots at 14:00 Moscow (11:00 UTC)
+    const localDb = makeDb({ tue: [9], sat: [14] })
+    const localApp = createApp(localDb, { slotConfig: TEST_CONFIG, now: nowAt(BASE_NOW) })
+
+    const res = await localApp.request('/slots?eventTypeId=test-et')
+    expect(res.status).toBe(200)
+    const slots: Array<{ startTime: string }> = await res.json()
+
+    const tuesdaySlots = slots.filter((s) => new Date(s.startTime).getDay() === 2) // Tuesday = 2
+    const saturdaySlots = slots.filter((s) => new Date(s.startTime).getDay() === 6) // Saturday = 6
+
+    // There must be at least one Tuesday slot at 9 Moscow = 6 UTC
+    expect(tuesdaySlots.length).toBeGreaterThan(0)
+    expect(tuesdaySlots.every((s) => new Date(s.startTime).getUTCHours() === 6)).toBe(true)
+
+    // There must be at least one Saturday slot at 14 Moscow = 11 UTC
+    expect(saturdaySlots.length).toBeGreaterThan(0)
+    expect(saturdaySlots.every((s) => new Date(s.startTime).getUTCHours() === 11)).toBe(true)
+
+    // Saturday slots must NOT have hour 9 Moscow (= 6 UTC)
+    const saturdayAt9Moscow = saturdaySlots.filter((s) => new Date(s.startTime).getUTCHours() === 6)
+    expect(saturdayAt9Moscow).toHaveLength(0)
+  })
+
+  it('empty schedule returns no slots', async () => {
+    const localDb = makeDb({})
+    const localApp = createApp(localDb, { slotConfig: TEST_CONFIG, now: nowAt(BASE_NOW) })
+
+    const res = await localApp.request('/slots?eventTypeId=test-et')
+    expect(res.status).toBe(200)
+    const slots: Array<unknown> = await res.json()
+
+    expect(slots).toEqual([])
+  })
+
+  it('day-of-week is determined in timezone, not UTC', async () => {
+    // Sun 21 Jan 2024 00:00 Moscow (UTC+3) = Sat 20 Jan 2024 21:00 UTC.
+    // A generator that uses UTC getDay() would see Saturday and skip this slot.
+    // A correct generator looks up 'sun' in Moscow timezone and produces the slot.
+    // The resulting startTime falls on Saturday in UTC — that's the proof.
+    const localDb = makeDb({ sun: [0] }) // midnight Moscow
+    const localApp = createApp(localDb, { slotConfig: TEST_CONFIG, now: nowAt(BASE_NOW) })
+
+    const res = await localApp.request('/slots?eventTypeId=test-et')
+    expect(res.status).toBe(200)
+    const slots: Array<{ startTime: string }> = await res.json()
+
+    // Two Moscow-Sundays in the window (Jan 21 and Jan 28), each at 00:00 Moscow = 21:00 UTC prev day
+    expect(slots).toHaveLength(2)
+
+    // Both startTimes are Saturday in UTC — proving day lookup used Moscow, not UTC
+    expect(slots.every((s) => new Date(s.startTime).getUTCDay() === 6)).toBe(true) // 6 = Saturday UTC
   })
 })
