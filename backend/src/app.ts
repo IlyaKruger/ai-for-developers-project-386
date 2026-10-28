@@ -33,7 +33,7 @@ export function createApp(db: Db, options: AppOptions = {}) {
         title: z.string().min(1),
         description: z.string(),
         durationMinutes: z.number().int().positive(),
-        availableHours: z.array(z.number().int().min(0).max(23)),
+        schedule: z.record(z.string(), z.array(z.number().int().min(0).max(23))),
       }),
     ),
     (c) => {
