@@ -343,21 +343,22 @@ describe('GET /slots — per-weekday schedule', () => {
     expect(slots).toEqual([])
   })
 
-  it('day-of-week is determined in the configured timezone: exactly 2 Sunday slots in 14-day window', async () => {
-    // BASE_NOW = Mon 15 Jan 2024; window = Tue 16 Jan – Mon 29 Jan 2024
-    // Two Sundays fall in this window: Sun 21 Jan and Sun 28 Jan
-    // With Europe/Moscow (UTC+3): 10:00 Moscow = 07:00 UTC — still Sunday in UTC too
-    const localDb = makeDb({ sun: [10] })
+  it('day-of-week is determined in timezone, not UTC', async () => {
+    // Sun 21 Jan 2024 00:00 Moscow (UTC+3) = Sat 20 Jan 2024 21:00 UTC.
+    // A generator that uses UTC getDay() would see Saturday and skip this slot.
+    // A correct generator looks up 'sun' in Moscow timezone and produces the slot.
+    // The resulting startTime falls on Saturday in UTC — that's the proof.
+    const localDb = makeDb({ sun: [0] }) // midnight Moscow
     const localApp = createApp(localDb, { slotConfig: TEST_CONFIG, now: nowAt(BASE_NOW) })
 
     const res = await localApp.request('/slots?eventTypeId=test-et')
     expect(res.status).toBe(200)
     const slots: Array<{ startTime: string }> = await res.json()
 
-    // Exactly 2 Sunday slots (one per Sunday in the 14-day window)
+    // Two Moscow-Sundays in the window (Jan 21 and Jan 28), each at 00:00 Moscow = 21:00 UTC prev day
     expect(slots).toHaveLength(2)
 
-    // Both slots must fall on a Sunday (getDay() === 0)
-    expect(slots.every((s) => new Date(s.startTime).getDay() === 0)).toBe(true)
+    // Both startTimes are Saturday in UTC — proving day lookup used Moscow, not UTC
+    expect(slots.every((s) => new Date(s.startTime).getUTCDay() === 6)).toBe(true) // 6 = Saturday UTC
   })
 })
