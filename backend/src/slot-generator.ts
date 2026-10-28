@@ -74,7 +74,13 @@ export function generateSlots(
     const dayRef = new Date(dayMs);
 
     for (const et of eventTypes) {
-      for (const hour of et.availableHours) {
+      const dayKey = new Intl.DateTimeFormat('en-US', {
+        timeZone: config.timezone,
+        weekday: 'short',
+      }).format(dayRef).toLowerCase().slice(0, 3); // 'mon', 'tue', ...
+      const hours = (et.schedule as Record<string, number[]>)[dayKey] ?? [];
+      if (hours.length === 0) continue;
+      for (const hour of hours) {
         let offsetMin = 0;
         while (offsetMin + et.durationMinutes <= 60) {
           const start = slotStartUtc(dayRef, hour, config.timezone, offsetMin);
