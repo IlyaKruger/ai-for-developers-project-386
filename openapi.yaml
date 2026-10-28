@@ -165,7 +165,7 @@ components:
         - title
         - description
         - durationMinutes
-        - availableHours
+        - schedule
       properties:
         title:
           type: string
@@ -174,11 +174,8 @@ components:
         durationMinutes:
           type: integer
           format: int32
-        availableHours:
-          type: array
-          items:
-            type: integer
-            format: int32
+        schedule:
+          $ref: '#/components/schemas/WeeklySchedule'
     EventType:
       type: object
       required:
@@ -186,7 +183,7 @@ components:
         - title
         - description
         - durationMinutes
-        - availableHours
+        - schedule
       properties:
         id:
           type: string
@@ -197,11 +194,8 @@ components:
         durationMinutes:
           type: integer
           format: int32
-        availableHours:
-          type: array
-          items:
-            type: integer
-            format: int32
+        schedule:
+          $ref: '#/components/schemas/WeeklySchedule'
     NotFoundError:
       type: object
       required:
@@ -228,3 +222,41 @@ components:
         startTime:
           type: string
           format: date-time
+    WeeklySchedule:
+      type: object
+      properties:
+        mon:
+          type: array
+          items:
+            type: integer
+            format: int32
+        tue:
+          type: array
+          items:
+            type: integer
+            format: int32
+        wed:
+          type: array
+          items:
+            type: integer
+            format: int32
+        thu:
+          type: array
+          items:
+            type: integer
+            format: int32
+        fri:
+          type: array
+          items:
+            type: integer
+            format: int32
+        sat:
+          type: array
+          items:
+            type: integer
+            format: int32
+        sun:
+          type: array
+          items:
+            type: integer
+            format: int32
