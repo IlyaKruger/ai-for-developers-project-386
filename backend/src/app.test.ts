@@ -149,7 +149,7 @@ describe('POST /bookings', () => {
       title: '60min',
       description: '',
       durationMinutes: 60,
-      availableHours: [10],
+      schedule: { mon: [10], tue: [10], wed: [10], thu: [10], fri: [10], sat: [10], sun: [10] },
     }
     const localDb = { eventTypes: [et60], bookings: [] as typeof db.bookings }
     const localApp = createApp(localDb, { slotConfig: TEST_CONFIG, now: nowAt(BASE_NOW) })
@@ -191,7 +191,7 @@ describe('POST /bookings', () => {
       title: '60min',
       description: '',
       durationMinutes: 60,
-      availableHours: [10],
+      schedule: { mon: [10], tue: [10], wed: [10], thu: [10], fri: [10], sat: [10], sun: [10] },
     }
     const localDb = { eventTypes: [et60], bookings: [] as typeof db.bookings }
     const localApp = createApp(localDb, { slotConfig: TEST_CONFIG, now: nowAt(BASE_NOW) })

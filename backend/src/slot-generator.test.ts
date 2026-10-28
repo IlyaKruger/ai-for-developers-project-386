@@ -14,7 +14,7 @@ const EVENT_CONSULTATION = {
   title: 'Консультация',
   description: '',
   durationMinutes: 30,
-  availableHours: [10, 11, 14],
+  schedule: { mon: [10, 11, 14], tue: [10, 11, 14], wed: [10, 11, 14], thu: [10, 11, 14], fri: [10, 11, 14], sat: [10, 11, 14], sun: [10, 11, 14] },
 }
 
 const EVENT_DEMO = {
@@ -22,25 +22,29 @@ const EVENT_DEMO = {
   title: 'Демо',
   description: '',
   durationMinutes: 60,
-  availableHours: [9, 17],
+  schedule: { mon: [9, 17], tue: [9, 17], wed: [9, 17], thu: [9, 17], fri: [9, 17], sat: [9, 17], sun: [9, 17] },
 }
 
 // Fixed reference: 2024-01-15 10:00 UTC (13:00 Moscow)
 const NOW = new Date('2024-01-15T10:00:00Z')
 
+// Number of hours per day in each event type's schedule (all 7 days have the same count)
+const CONSULTATION_HOURS_PER_DAY = 3 // [10, 11, 14]
+const DEMO_HOURS_PER_DAY = 2 // [9, 17]
+
 describe('generateSlots', () => {
   it('generates slots for each day and hour in the window', () => {
     const slots = generateSlots([EVENT_CONSULTATION], [], BASE_CONFIG, NOW)
     // 14 days × 3 hours = 42 slots
-    expect(slots).toHaveLength(14 * EVENT_CONSULTATION.availableHours.length)
+    expect(slots).toHaveLength(14 * CONSULTATION_HOURS_PER_DAY)
   })
 
   it('generates slots for multiple event types', () => {
     const slots = generateSlots([EVENT_CONSULTATION, EVENT_DEMO], [], BASE_CONFIG, NOW)
     const consultationSlots = slots.filter((s) => s.eventTypeId === EVENT_CONSULTATION.id)
     const demoSlots = slots.filter((s) => s.eventTypeId === EVENT_DEMO.id)
-    expect(consultationSlots).toHaveLength(14 * EVENT_CONSULTATION.availableHours.length)
-    expect(demoSlots).toHaveLength(14 * EVENT_DEMO.availableHours.length)
+    expect(consultationSlots).toHaveLength(14 * CONSULTATION_HOURS_PER_DAY)
+    expect(demoSlots).toHaveLength(14 * DEMO_HOURS_PER_DAY)
   })
 
   it('interprets hours in the configured timezone (10:00 Moscow = 07:00 UTC)', () => {
@@ -57,8 +61,8 @@ describe('generateSlots', () => {
     expect(slots).toHaveLength(0)
   })
 
-  it('returns empty array when availableHours is empty', () => {
-    const et = { ...EVENT_CONSULTATION, availableHours: [] }
+  it('returns empty array when schedule has no hours', () => {
+    const et = { ...EVENT_CONSULTATION, schedule: {} }
     const slots = generateSlots([et], [], BASE_CONFIG, NOW)
     expect(slots).toHaveLength(0)
   })
@@ -104,9 +108,9 @@ describe('generateSlots', () => {
     }
   })
 
-  it('slot count matches windowDays × availableHours', () => {
+  it('slot count matches windowDays × hours per day', () => {
     const slots = generateSlots([EVENT_CONSULTATION], [], BASE_CONFIG, NOW)
-    expect(slots).toHaveLength(BASE_CONFIG.windowDays * EVENT_CONSULTATION.availableHours.length)
+    expect(slots).toHaveLength(BASE_CONFIG.windowDays * CONSULTATION_HOURS_PER_DAY)
   })
 })
 
@@ -115,19 +119,19 @@ describe('generateSlots with stepMinutes', () => {
     // duration=30, step=30: offset 0 → 0+30≤60 ✓, offset 30 → 30+30=60≤60 ✓, offset 60 → 60+30=90>60 stop
     const config = { ...BASE_CONFIG, stepMinutes: 30 }
     const slots = generateSlots([EVENT_CONSULTATION], [], config, NOW)
-    expect(slots).toHaveLength(BASE_CONFIG.windowDays * EVENT_CONSULTATION.availableHours.length * 2)
+    expect(slots).toHaveLength(BASE_CONFIG.windowDays * CONSULTATION_HOURS_PER_DAY * 2)
   })
 
   it('stepMinutes=30 with 60-min duration fits only one slot per hour', () => {
     // duration=60, step=30: offset 0 → 0+60=60≤60 ✓, offset 30 → 30+60=90>60 stop
     const config = { ...BASE_CONFIG, stepMinutes: 30 }
     const slots = generateSlots([EVENT_DEMO], [], config, NOW)
-    expect(slots).toHaveLength(BASE_CONFIG.windowDays * EVENT_DEMO.availableHours.length * 1)
+    expect(slots).toHaveLength(BASE_CONFIG.windowDays * DEMO_HOURS_PER_DAY * 1)
   })
 
   it('stepMinutes=60 produces the same count as the default', () => {
     const config = { ...BASE_CONFIG, stepMinutes: 60 }
     const slots = generateSlots([EVENT_CONSULTATION], [], config, NOW)
-    expect(slots).toHaveLength(BASE_CONFIG.windowDays * EVENT_CONSULTATION.availableHours.length)
+    expect(slots).toHaveLength(BASE_CONFIG.windowDays * CONSULTATION_HOURS_PER_DAY)
   })
 })
