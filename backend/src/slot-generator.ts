@@ -33,9 +33,9 @@ function getOffsetMs(utc: Date, tz: string): number {
 
 /**
  * Builds the UTC Date for the moment when the clock in `tz` shows
- * the same calendar date as `referenceUtc` (in that tz) at `hour:00:00`.
+ * the same calendar date as `referenceUtc` (in that tz) at `hour:offsetMinutes:00`.
  */
-function slotStartUtc(referenceUtc: Date, hour: number, tz: string): Date {
+function slotStartUtc(referenceUtc: Date, hour: number, tz: string, offsetMinutes = 0): Date {
   // Get the calendar date as seen in the target timezone
   const dateParts = new Intl.DateTimeFormat("en-US", {
     timeZone: tz,
@@ -49,7 +49,7 @@ function slotStartUtc(referenceUtc: Date, hour: number, tz: string): Date {
   const day = pd("day");
 
   // Naive UTC guess: treat local time as UTC
-  const naive = new Date(Date.UTC(year, month - 1, day, hour, 0, 0, 0));
+  const naive = new Date(Date.UTC(year, month - 1, day, hour, offsetMinutes, 0, 0));
   // Correct for the timezone offset at approximately this time
   const offset = getOffsetMs(naive, tz);
   return new Date(naive.getTime() - offset);
@@ -75,26 +75,34 @@ export function generateSlots(
 
     for (const et of eventTypes) {
       for (const hour of et.availableHours) {
-        const start = slotStartUtc(dayRef, hour, config.timezone);
+        let offsetMin = 0;
+        while (offsetMin + et.durationMinutes <= 60) {
+          const start = slotStartUtc(dayRef, hour, config.timezone, offsetMin);
 
-        // Skip slots in the past
-        if (start.getTime() <= now.getTime()) continue;
+          // Skip slots in the past
+          if (start.getTime() <= now.getTime()) {
+            offsetMin += config.stepMinutes;
+            continue;
+          }
 
-        const startIso = start.toISOString();
+          const startIso = start.toISOString();
 
-        // Skip if overlaps with any existing booking
-        const busy = bookings.some((b) =>
-          overlaps(startIso, et.durationMinutes, b.startTime, b.durationMinutes),
-        );
-        if (busy) continue;
+          // Skip if overlaps with any existing booking
+          const busy = bookings.some((b) =>
+            overlaps(startIso, et.durationMinutes, b.startTime, b.durationMinutes),
+          );
+          if (!busy) {
+            // Deterministic ID: same (eventTypeId, startTime) always yields the same slotId,
+            // so a slotId returned from GET /slots remains valid in POST /bookings.
+            const id = createHash("sha256")
+              .update(`${et.id}|${startIso}`)
+              .digest("hex")
+              .slice(0, 32);
+            slots.push({ id, eventTypeId: et.id, startTime: startIso });
+          }
 
-        // Deterministic ID: same (eventTypeId, startTime) always yields the same slotId,
-        // so a slotId returned from GET /slots remains valid in POST /bookings.
-        const id = createHash("sha256")
-          .update(`${et.id}|${startIso}`)
-          .digest("hex")
-          .slice(0, 32);
-        slots.push({ id, eventTypeId: et.id, startTime: startIso });
+          offsetMin += config.stepMinutes;
+        }
       }
     }
   }

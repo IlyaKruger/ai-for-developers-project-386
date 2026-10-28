@@ -6,6 +6,7 @@ const BASE_CONFIG: SlotConfig = {
   timezone: 'Europe/Moscow', // UTC+3
   windowDays: 14,
   windowStartOffsetDays: 1,
+  stepMinutes: 60,
 }
 
 const EVENT_CONSULTATION = {
@@ -105,6 +106,28 @@ describe('generateSlots', () => {
 
   it('slot count matches windowDays × availableHours', () => {
     const slots = generateSlots([EVENT_CONSULTATION], [], BASE_CONFIG, NOW)
+    expect(slots).toHaveLength(BASE_CONFIG.windowDays * EVENT_CONSULTATION.availableHours.length)
+  })
+})
+
+describe('generateSlots with stepMinutes', () => {
+  it('stepMinutes=30 generates two sub-slots per hour when duration fits', () => {
+    // duration=30, step=30: offset 0 → 0+30≤60 ✓, offset 30 → 30+30=60≤60 ✓, offset 60 → 60+30=90>60 stop
+    const config = { ...BASE_CONFIG, stepMinutes: 30 }
+    const slots = generateSlots([EVENT_CONSULTATION], [], config, NOW)
+    expect(slots).toHaveLength(BASE_CONFIG.windowDays * EVENT_CONSULTATION.availableHours.length * 2)
+  })
+
+  it('stepMinutes=30 with 60-min duration fits only one slot per hour', () => {
+    // duration=60, step=30: offset 0 → 0+60=60≤60 ✓, offset 30 → 30+60=90>60 stop
+    const config = { ...BASE_CONFIG, stepMinutes: 30 }
+    const slots = generateSlots([EVENT_DEMO], [], config, NOW)
+    expect(slots).toHaveLength(BASE_CONFIG.windowDays * EVENT_DEMO.availableHours.length * 1)
+  })
+
+  it('stepMinutes=60 produces the same count as the default', () => {
+    const config = { ...BASE_CONFIG, stepMinutes: 60 }
+    const slots = generateSlots([EVENT_CONSULTATION], [], config, NOW)
     expect(slots).toHaveLength(BASE_CONFIG.windowDays * EVENT_CONSULTATION.availableHours.length)
   })
 })

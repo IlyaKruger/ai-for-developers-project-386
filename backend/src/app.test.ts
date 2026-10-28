@@ -8,6 +8,7 @@ const TEST_CONFIG: SlotConfig = {
   timezone: 'Europe/Moscow',
   windowDays: 14,
   windowStartOffsetDays: 1,
+  stepMinutes: 60,
 }
 
 /** Returns a now() that is `days` days after the given base date */
